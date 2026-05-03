@@ -22,10 +22,6 @@ Set one of these environment variables:
 - `ADS_API_KEY`
 - `SCIX_API_KEY`
 
-Optional:
-
-- `ADS_BASE_URL` if you need a non-default ADS API host
-
 ## Main files
 
 - `SKILL.md` — skill instructions and workflows
@@ -35,14 +31,8 @@ Optional:
 ## Quick examples
 
 ```bash
-python ~/.agents/skills/absads/scripts/ads_scix.py search 'author:"Hubble" year:1929' --rows 5
-python ~/.agents/skills/absads/scripts/ads_scix.py export bibtex 1929PNAS...15..168H
-python ~/.agents/skills/absads/scripts/ads_scix.py metrics 1929PNAS...15..168H
-python ~/.agents/skills/absads/scripts/ads_scix.py source 2012A%26A...542A..16R --out ./paper-src
+python ads_scix.py search 'author:"Hubble" year:1929' --rows 5
+python ads_scix.py export bibtex 1929PNAS...15..168H
+python ads_scix.py metrics 1929PNAS...15..168H
+python ads_scix.py source 2012A%26A...542A..16R --out ./paper-src
 ```
-
-## Notes
-
-- keep API keys in environment variables, not in files
-- treat SciX as ADS-compatible unless official SciX-specific docs are verified
-- ask before mutating ADS/SciX libraries
