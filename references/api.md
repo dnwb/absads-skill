@@ -11,12 +11,35 @@ curl -H "Authorization: Bearer $ADS_API_KEY" \
 
 Local convention: prefer `ADS_API_KEY`, fallback to `SCIX_API_KEY`.
 
+## Direct arXiv API
+
+The public arXiv API is an Atom feed endpoint and does not require authentication:
+
+- Endpoint: `GET https://export.arxiv.org/api/query`
+- Search parameters: `search_query`, `id_list`, `start`, `max_results`, `sortBy`, `sortOrder`
+- Supported sort fields: `relevance`, `lastUpdatedDate`, `submittedDate`
+- Search syntax includes `all:`, `ti:`, `au:`, `abs:`, `cat:`, `id:`, and boolean/date expressions.
+
+Example:
+
+```bash
+python scripts/ads_scix.py arxiv search 'all:galaxy AND cat:astro-ph.GA' --max-results 5
+python scripts/ads_scix.py arxiv search --id-list 2401.01234v2
+```
+
+The helper normalizes Atom entries to JSON and preserves the exact request parameters and source URL. It sends an identifiable `User-Agent`; set `ARXIV_USER_AGENT` to include a contact email when possible, e.g. `absads/1.0 (mailto:you@example.org)`. Use small result pages and respect arXiv rate limits. A User-Agent does not bypass HTTP 429 rate limits. arXiv API metadata should not be treated as a replacement for ADS canonical bibcodes or citation metrics.
+
+The default User-Agent is `absads/1.0`, without a personal email. Override it only with the caller's own identity. Supply either a nonempty query or `--id-list`; supplying neither or both is an error before any network request.
+
 ## Search
 
 - Endpoint: `GET https://api.adsabs.harvard.edu/v1/search/query`
 - Core params: `q`, `fq`, `fl`, `start`, `rows`, `sort`
 - Useful fields: `bibcode,title,author,year,identifier,doi,citation_count,read_count,property,abstract,arxiv_class,reference,citation`
 - Common sorts: `date desc`, `citation_count desc`, `read_count desc`
+- Claim-checking first pass: `--rows 5 --fields bibcode title year identifier doi`. Existing generic CLI defaults remain unchanged; pass these options explicitly. Fetch abstracts/authors only for selected candidates.
+- For claim checking, retain `q/fq/fl/rows/start/sort`, the actual endpoint, retrieval time, and the claim/subclaim purpose. arXiv records retain their exact API parameters instead. Follow `claim-retrieval.md` for applicability and stopping rules.
+- Known identifiers take priority over broad keyword queries. Preserve the actual consulted arXiv version; metadata alone does not establish a scientific result or its applicability.
 
 Example:
 

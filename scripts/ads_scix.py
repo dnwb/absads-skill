@@ -9,17 +9,21 @@ import json
 import os
 import re
 import shutil
+import sys
 import tarfile
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Iterable
 
 
 ADS_BASE_URL = os.environ.get("ADS_BASE_URL", "https://api.adsabs.harvard.edu")
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
+ARXIV_USER_AGENT = os.environ.get("ARXIV_USER_AGENT", "absads/1.0")
 ARXIV_RE = re.compile(r"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?|[a-z\-]+(?:\.[A-Z]{2})?/\d{7}(?:v\d+)?)", re.I)
 
 
@@ -55,6 +59,93 @@ def print_json(raw: bytes) -> None:
         print(raw.decode("utf-8", "replace"))
         return
     print(json.dumps(parsed, indent=2, ensure_ascii=False))
+
+
+def arxiv_request(params: dict[str, str]) -> bytes:
+    url = ARXIV_API_URL + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={
+        "Accept": "application/atom+xml",
+        "User-Agent": ARXIV_USER_AGENT,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise SystemExit(f"arXiv API error {exc.code}: {detail}") from exc
+
+
+def atom_text(element: ET.Element, name: str, namespace: str = "http://www.w3.org/2005/Atom") -> str | None:
+    child = element.find(f"{{{namespace}}}{name}")
+    return None if child is None or child.text is None else " ".join(child.text.split())
+
+
+def parse_arxiv_feed(raw: bytes, *, params: dict[str, str]) -> dict[str, object]:
+    atom = "http://www.w3.org/2005/Atom"
+    arxiv = "http://arxiv.org/schemas/atom"
+    opensearch = "http://a9.com/-/spec/opensearch/1.1/"
+    root = ET.fromstring(raw)
+    entries = []
+    for entry in root.findall(f"{{{atom}}}entry"):
+        entries.append({
+            "id": atom_text(entry, "id"),
+            "arxiv_id": find_arxiv_id([atom_text(entry, "id") or ""]),
+            "title": atom_text(entry, "title"),
+            "summary": atom_text(entry, "summary"),
+            "published": atom_text(entry, "published"),
+            "updated": atom_text(entry, "updated"),
+            "authors": [atom_text(author, "name") for author in entry.findall(f"{{{atom}}}author")],
+            "categories": [node.attrib.get("term") for node in entry.findall(f"{{{atom}}}category")],
+            "doi": atom_text(entry, "doi", arxiv),
+            "comment": atom_text(entry, "comment", arxiv),
+            "links": [link.attrib for link in entry.findall(f"{{{atom}}}link")],
+        })
+    return {
+        "source": "arXiv API",
+        "source_url": ARXIV_API_URL + "?" + urllib.parse.urlencode(params),
+        "query": params,
+        "total_results": atom_text(root, "totalResults", opensearch),
+        "start_index": atom_text(root, "startIndex", opensearch),
+        "items_per_page": atom_text(root, "itemsPerPage", opensearch),
+        "entries": entries,
+    }
+
+
+def command_arxiv_search(args: argparse.Namespace) -> None:
+    raw_query = getattr(args, "query", None)
+    raw_id_list = getattr(args, "id_list", None)
+    clean_query = raw_query.strip() if isinstance(raw_query, str) else None
+    clean_id_list = [i.strip() for i in raw_id_list if isinstance(i, str)] if raw_id_list is not None else None
+
+    if clean_id_list is not None:
+        if any(not i for i in clean_id_list):
+            sys.stderr.write("error: --id-list identifiers must not be empty\n")
+            raise SystemExit(2)
+
+    has_query = raw_query is not None
+    has_id_list = bool(clean_id_list)
+
+    if has_query and has_id_list:
+        sys.stderr.write("error: use query or --id-list, not both\n")
+        raise SystemExit(2)
+
+    if has_id_list:
+        assert clean_id_list is not None
+        query_params = {"id_list": ",".join(clean_id_list)}
+    elif clean_query:
+        query_params = {"search_query": clean_query}
+    else:
+        sys.stderr.write("error: provide query or --id-list\n")
+        raise SystemExit(2)
+
+    params = {
+        "start": str(getattr(args, "start", 0)),
+        "max_results": str(getattr(args, "max_results", 10)),
+        "sortBy": getattr(args, "sort_by", "submittedDate"),
+        "sortOrder": getattr(args, "sort_order", "descending"),
+        **query_params,
+    }
+    print(json.dumps(parse_arxiv_feed(arxiv_request(params), params=params), indent=2, ensure_ascii=False))
 
 
 def command_search(args: argparse.Namespace) -> None:
@@ -208,6 +299,17 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--arxiv-id", help="Skip ADS lookup and use this arXiv ID")
     source.add_argument("--out", required=True, help="Clean output directory")
     source.set_defaults(func=command_source)
+
+    arxiv = sub.add_parser("arxiv", help="Use the public arXiv Atom API")
+    arxiv_sub = arxiv.add_subparsers(required=True)
+    arxiv_search = arxiv_sub.add_parser("search", help="Search arXiv")
+    arxiv_search.add_argument("query", nargs="?", default=None, help="arXiv search_query; omit when using --id-list")
+    arxiv_search.add_argument("--id-list", nargs="+", help="Specific arXiv IDs")
+    arxiv_search.add_argument("--start", type=int, default=0)
+    arxiv_search.add_argument("--max-results", type=int, default=10)
+    arxiv_search.add_argument("--sort-by", choices=["relevance", "lastUpdatedDate", "submittedDate"], default="submittedDate")
+    arxiv_search.add_argument("--sort-order", choices=["ascending", "descending"], default="descending")
+    arxiv_search.set_defaults(func=command_arxiv_search)
 
     return parser
 
