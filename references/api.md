@@ -2,14 +2,14 @@
 
 ## Authentication
 
-Use bearer-token auth:
+ADS/SciX API requests, including search, exports, metrics, and library operations, require bearer-token auth. Direct public arXiv requests do not:
 
 ```bash
 curl -H "Authorization: Bearer $ADS_API_KEY" \
   "https://api.adsabs.harvard.edu/v1/search/query?q=star&rows=1"
 ```
 
-Local convention: prefer `ADS_API_KEY`, fallback to `SCIX_API_KEY`.
+The Python helper prefers `ADS_API_KEY`, then `SCIX_API_KEY`, then the wizard's saved credentials file. Its `request()` function applies this lookup to direct API calls, including library endpoints. The curl examples below require a key already present in the shell environment; they do not read the saved file automatically.
 
 ## Direct arXiv API
 
