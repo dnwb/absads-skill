@@ -1,6 +1,8 @@
 import argparse
 import importlib.util
 import io
+import os
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -14,9 +16,40 @@ SPEC = importlib.util.spec_from_file_location("ads_scix", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 ads_scix = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ads_scix)
+sys.modules["ads_scix"] = ads_scix
+WIZARD_SPEC = importlib.util.spec_from_file_location("setup_ads_key", SCRIPT.parent / "setup_ads_key.py")
+assert WIZARD_SPEC is not None and WIZARD_SPEC.loader is not None
+wizard = importlib.util.module_from_spec(WIZARD_SPEC)
+WIZARD_SPEC.loader.exec_module(wizard)
 
 
 class AdsScixCliTest(unittest.TestCase):
+    def test_saved_key_reused_and_environment_takes_precedence(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": temp}, clear=True):
+            with mock.patch("builtins.input", side_effect=["n", "", "y"]), mock.patch.object(wizard.getpass, "getpass", return_value="saved'key"), mock.patch("sys.stdout", new=io.StringIO()):
+                wizard.main()
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = b"{}"
+            with mock.patch.object(ads_scix.urllib.request, "urlopen", return_value=response) as urlopen:
+                ads_scix.request("GET", "/v1/search/query")
+            self.assertEqual(urlopen.call_args.args[0].get_header("Authorization"), "Bearer saved'key")
+            for env, expected in [({"SCIX_API_KEY": "scix"}, "scix"), ({"ADS_API_KEY": "ads", "SCIX_API_KEY": "scix"}, "ads")]:
+                with mock.patch.dict(os.environ, env), mock.patch("builtins.input", side_effect=AssertionError("unexpected prompt")), mock.patch("sys.stdout", new=io.StringIO()):
+                    self.assertEqual(ads_scix.token(), expected)
+                    wizard.main()
+            with mock.patch("builtins.input", side_effect=AssertionError("unexpected prompt")), mock.patch("sys.stdout", new=io.StringIO()):
+                wizard.main()
+
+    def test_missing_key_reports_setup_and_does_not_execute_credentials(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": temp}, clear=True):
+            with self.assertRaisesRegex(SystemExit, "setup_ads_key.py"):
+                ads_scix.token()
+            path = Path(temp) / "absads" / "credentials"
+            path.parent.mkdir()
+            path.write_text("ADS_API_KEY='unterminated\n", encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "setup_ads_key.py"):
+                ads_scix.token()
+
     def test_arxiv_user_agent_default_and_override(self):
         for value, expected in [(None, "absads/1.0"), ("absads-test/1.0 (mailto:user@example.org)", "absads-test/1.0 (mailto:user@example.org)")]:
             with self.subTest(value=value), mock.patch.dict(ads_scix.os.environ):

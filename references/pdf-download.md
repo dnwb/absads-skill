@@ -1,10 +1,10 @@
 # PDF Download Reference
 
-Use this file only after ADS/SciX has identified the astrophysics paper and the user explicitly wants a PDF or downloaded full-text file.
+Use this file when the paper is identified and the user explicitly wants a PDF or downloaded full-text file.
 
 ## Boundary
 
-- Keep ADS/SciX as the discovery and metadata source. Preserve `bibcode`, DOI, arXiv ID, title, authors, year, ADS URL, and the ADS query used before attempting download.
+- Use ADS/SciX for discovery when available; otherwise use an appropriate public source or the user's identifier. Preserve available identifiers, metadata, source URL, and query. A DOI or arXiv ID is sufficient input for the downloader; it does not require an ADS key.
 - Keep source-first behavior. If the task is to inspect source, figures, tables, TeX, or reproducibility artifacts, use the arXiv source workflow instead of PDF download.
 - Use PDF download only when the user asks for a PDF, says to download papers, or gives DOI/arXiv IDs for download.
 - Use the bundled script first. Do not install or configure external PDF downloader MCP servers for ordinary OA PDF requests.
@@ -56,25 +56,25 @@ python ~/.agents/skills/absads/scripts/pdf_fetch.py download 'arXiv:2401.01234' 
 
 ## Workflow
 
-1. Use ADS/SciX to resolve the paper and collect `bibcode`, DOI, arXiv ID, title, authors, year, ADS URL, and query.
+1. Identify the paper using available metadata and collect its DOI or arXiv ID; preserve the discovery source and available identifiers.
 2. Prefer arXiv ID when available because it is direct and source-adjacent.
 3. Otherwise use DOI. With `legal_only`, source order is publisher direct -> Crossref -> DOI landing page -> OpenAlex -> Unpaywall if email is available -> DOAJ -> CrossrefPage -> EuropePMC -> CORE -> PMC. With `grey_last`, continue to LibGen -> Sci-Hub after legal/OA sources.
 4. Run the bundled script.
-5. Report the saved file path, source used, URL used, and ADS provenance.
+5. Report the saved file path, source used, URL used, and discovery provenance.
 
 ## Failure Handling
 
 If no PDF is found:
 
 1. Report the identifiers tried and say whether the failed strategy was legal/OA-only or included third-party sources.
-2. Return the ADS provenance and DOI/arXiv ID for manual follow-up.
+2. Return the available provenance and DOI/arXiv ID for manual follow-up.
 3. If using `grey_last`, preserve the script's explicit terminal message when no OA or third-party candidates are found.
 
 If the downloaded response is not a PDF, the script rejects it and tries the next candidate. Treat final failure as an availability problem for the selected strategy, not as proof that the paper has no PDF anywhere.
 
 ## Batch Download
 
-1. Build the candidate list with ADS/SciX.
+1. Build the candidate list from available sources.
 2. Show bibcodes and DOI/arXiv IDs and ask for confirmation before downloading.
 3. Run the bundled script once per confirmed identifier.
 4. Return a concise success/failure table with file paths and failed identifiers.
@@ -83,10 +83,10 @@ If the downloaded response is not a PDF, the script rejects it and tries the nex
 
 Each PDF download note should include:
 
-- ADS `bibcode`
+- ADS `bibcode`, if available
 - DOI or arXiv ID used for download
 - title, authors, year
-- ADS URL or ADS query
+- Discovery source URL or query, if available
 - PDF source: arXiv, PublisherDirect, Crossref, LandingPage, OpenAlex, Unpaywall, DOAJ, CrossrefPage, EuropePMC, CORE, PMC, LibGen, or Sci-Hub
 - downloaded URL
 - returned file path

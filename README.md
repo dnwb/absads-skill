@@ -19,10 +19,14 @@ It helps an agent use ADS/SciX as the primary source for paper metadata, citatio
 
 ## What you need to configure
 
-Set one of these environment variables:
+No ADS/SciX key is needed for direct arXiv searches, work with existing files, or PDF downloads using a DOI or arXiv ID. arXiv search covers arXiv records, not the full ADS database.
+
+For ADS/SciX API operations—including ADS search, citation exports, metrics, and personal libraries—the helper checks these environment variables in order:
 
 - `ADS_API_KEY`
 - `SCIX_API_KEY`
+
+If neither variable is set, the helper automatically reads the key saved by `python scripts/setup_ads_key.py` at `${XDG_CONFIG_HOME:-~/.config}/absads/credentials`. The wizard skips setup when a key is already available. Run `python scripts/ads_scix.py auth-status` to check availability without displaying the key; this does not verify the key with ADS. On Windows, Python's file permissions depend on the user's Windows account and directory access controls.
 
 For the direct arXiv API client, optionally set `ARXIV_USER_AGENT`, preferably with a contact email. The client already sends an identifiable default User-Agent.
 

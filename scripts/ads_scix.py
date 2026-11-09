@@ -8,6 +8,7 @@ import gzip
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import tarfile
@@ -29,9 +30,33 @@ ARXIV_RE = re.compile(r"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?|[a-z\-]+(?:\.[A-Z]{2
 
 def token() -> str:
     value = os.environ.get("ADS_API_KEY") or os.environ.get("SCIX_API_KEY")
-    if not value:
-        raise SystemExit("Set ADS_API_KEY or SCIX_API_KEY in the environment.")
-    return value
+    if value:
+        return value
+    config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    credentials = config_dir / "absads" / "credentials"
+    try:
+        lines = credentials.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    except OSError as exc:
+        raise SystemExit(f"Cannot read ADS credentials file: {exc.strerror}") from exc
+    for line in reversed(lines):
+        if line.startswith("ADS_API_KEY="):
+            try:
+                parts = shlex.split(line, comments=False)
+            except ValueError:
+                break
+            if len(parts) == 1 and parts[0].startswith("ADS_API_KEY="):
+                value = parts[0].partition("=")[2]
+                if value:
+                    return value
+            break
+    raise SystemExit("ADS/SciX credentials unavailable. Set ADS_API_KEY or SCIX_API_KEY, or run python scripts/setup_ads_key.py.")
+
+
+def command_auth_status(args: argparse.Namespace) -> None:
+    token()
+    print("ADS/SciX credentials available (not validated online).")
 
 
 def request(method: str, path: str, *, params: dict[str, str] | None = None, data: object | None = None) -> bytes:
@@ -274,6 +299,9 @@ def command_source(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ADS/SciX academic research helper")
     sub = parser.add_subparsers(required=True)
+
+    auth_status = sub.add_parser("auth-status", help="Check for locally available credentials without displaying them")
+    auth_status.set_defaults(func=command_auth_status)
 
     search = sub.add_parser("search", help="Search ADS/SciX literature")
     search.add_argument("query")

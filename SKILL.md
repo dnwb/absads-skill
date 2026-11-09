@@ -5,16 +5,17 @@ description: Use when doing astrophysics or astronomy academic research with ADS
 
 # ADS/SciX Academic Research
 
-Use ADS/SciX as the primary source for astrophysics literature metadata. Keep the workflow source-first: use arXiv source packages for paper source/content artifacts when available, and download PDFs only when the user explicitly asks for PDFs or full-text PDF files.
+Use ADS/SciX as the primary source for astrophysics literature metadata when its API credentials are available. Otherwise, use the public arXiv API for suitable searches and known arXiv IDs, or other available public sources for broader coverage. Keep the workflow source-first: use arXiv source packages for paper source/content artifacts when available, and download PDFs only when the user explicitly asks for PDFs or full-text PDF files.
 
 ## Core Rules
 
-- Read credentials from `ADS_API_KEY`, falling back to `SCIX_API_KEY`; send as `Authorization: Bearer <token>`.
-- Never print, write, commit, or paste API keys.
+- ADS/SciX API operations require a key. The helper uses `ADS_API_KEY`, then `SCIX_API_KEY`, then the key saved by the setup wizard. Before choosing a fallback for missing credentials, run `python ~/.agents/skills/absads/scripts/ads_scix.py auth-status` to check availability without showing the key; this does not validate it online. For direct API operations such as library access, use the helper's `request()` so the same credential lookup applies.
+- Only when an ADS API operation is needed and no key is available, offer `python ~/.agents/skills/absads/scripts/setup_ads_key.py`; the user runs it locally and chooses whether to save the key. Public arXiv search, reading existing files, and PDF downloads by DOI or arXiv ID do not require an ADS/SciX key; explain coverage limitations when using an alternative.
+- Never print, commit, or paste API keys. Only the user's setup wizard may save a key locally, with the user's consent.
 - Preserve available bibcodes, arXiv IDs, DOI, title, year, source URL, and exact query. Retrieve authors when needed; do not print long author lists by default. Never invent missing identifiers.
 - Prefer official ADS API endpoints. Treat SciX as ADS-compatible unless official SciX-specific docs are verified.
 - Ask before mutating ADS/SciX libraries or downloading many full source packages.
-- For PDF download requests, first identify the paper through ADS/SciX and preserve identifiers, then use the built-in PDF download reference only if a DOI or arXiv ID is available. Default to legal/OA PDF sources unless the user explicitly selects the documented LibGen/Sci-Hub strategy.
+- For PDF download requests, identify the paper and preserve available identifiers; use ADS/SciX when available or another public source as appropriate. Use the built-in PDF download reference when a DOI or arXiv ID is available. Default to legal/OA PDF sources unless the user explicitly selects the documented LibGen/Sci-Hub strategy.
 - In claim-checking mode, bind every retrieval request to a claim/subclaim and a verification question. Compare source applicability, not ultimate scientific truth; return non-binding next actions, not automatic manuscript edits.
 
 ## Quick Commands
@@ -37,7 +38,7 @@ python ~/.agents/skills/absads/scripts/ads_scix.py arxiv search 'all:galaxy AND 
 # Retrieve metadata for specific arXiv IDs
 python ~/.agents/skills/absads/scripts/ads_scix.py arxiv search --id-list 2401.01234 2401.05678
 
-# Download and unpack arXiv source for the first arXiv identifier found in ADS metadata
+# Download and unpack arXiv source via an ADS bibcode (requires an ADS/SciX key)
 python ~/.agents/skills/absads/scripts/ads_scix.py source 2012A%26A...542A..16R --out ./paper-src
 
 # Download a PDF only when explicitly requested; see references/pdf-download.md for legal/OA and LibGen/Sci-Hub strategies
@@ -52,7 +53,7 @@ Read `references/claim-retrieval.md` before checking manuscript assertions, prec
 
 ## Direct arXiv API Workflow
 
-Use the public arXiv Atom API when ADS search is unavailable, when searching arXiv-native fields/categories, or when the user explicitly requests arXiv metadata. The helper returns normalized JSON containing titles, abstracts, authors, categories, dates, DOI/comment fields, links, arXiv IDs, the exact API parameters, and the source URL. It does not require an API key. It sends an identifiable User-Agent; override it with `ARXIV_USER_AGENT` and preferably include a contact email, for example `absads/1.0 (mailto:you@example.org)`. Do not impersonate a browser User-Agent to bypass rate limits.
+Use the public arXiv Atom API when ADS credentials are unavailable, when searching arXiv-native fields/categories, or when the user explicitly requests arXiv metadata. Its coverage is limited to arXiv records. The helper returns normalized JSON containing titles, abstracts, authors, categories, dates, DOI/comment fields, links, arXiv IDs, the exact API parameters, and the source URL. It does not require an API key. It sends an identifiable User-Agent; override it with `ARXIV_USER_AGENT` and preferably include a contact email, for example `absads/1.0 (mailto:you@example.org)`. Do not impersonate a browser User-Agent to bypass rate limits.
 
 - Use arXiv `search_query` syntax such as `all:galaxy`, `au:Einstein`, `cat:astro-ph.GA`, and date ranges.
 - Use `--id-list` for known identifiers; preserve versions such as `2401.01234v2` when supplied.
@@ -65,8 +66,8 @@ Use the public arXiv Atom API when ADS search is unavailable, when searching arX
 
 1. Select topic discovery for a survey, or claim checking for a specific assertion. In claim mode, split compound claims and state the question, required coverage, and budget before querying.
 2. Use known identifiers directly; otherwise locate candidates by title keywords, object, and quantity. Start with `bibcode,title,year,identifier,doi` and `--rows 5`; request abstracts, authors, or metrics only as needed.
-3. Sort intentionally, usually `date desc`, `citation_count desc`, or `read_count desc`.
-4. Return results with bibcodes and identifiers; do not summarize papers without preserving identifiers.
+3. Sort intentionally using the selected source's supported fields.
+4. Return results with available identifiers, including bibcodes when supplied by ADS.
 5. For a survey, chain outward with references/citations after identifying seed papers.
 
 ## Claim Retrieval Workflow
@@ -113,8 +114,8 @@ For claim checks, metadata alone cannot establish a numerical result, upper limi
 
 ## arXiv Source Workflow
 
-1. Search ADS with `fl=bibcode,identifier,title`.
-2. Extract `arXiv:...` from `identifier`; preserve version if present and version-specific source is needed.
+1. Use a known arXiv ID, or find one through ADS or the public arXiv API; preserve the version if needed.
+2. If using ADS, extract `arXiv:...` from `identifier`.
 3. Download `https://arxiv.org/src/<arxiv-id>`.
 4. Extract into a clean directory named for the bibcode or arXiv ID.
 5. Inspect `.tex`, `.bib`, figures, tables, and data files as needed.
@@ -150,8 +151,8 @@ Assume ADS-compatible behavior by default. If you are using SciX and do not have
 
 | Mistake | Fix |
 |---------|-----|
-| Searching web first for astrophysics papers | Search ADS/SciX first. |
-| Losing bibcodes in summaries | Include bibcode/arXiv/DOI in every paper note. |
+| Treating arXiv as a complete ADS replacement | State its coverage limits; use ADS/SciX when its specific records or features are needed. |
+| Losing identifiers in summaries | Include available bibcode, arXiv ID, or DOI in each paper note. |
 | Printing tokens in debug output | Never display env var values. |
 | Treating all arXiv source downloads as tar | Detect gzip/tar/zip and extract safely. |
 | Mutating libraries silently | Ask first and state exactly which bibcodes will change. |
